@@ -82,3 +82,34 @@ VALUES
 SHOW TASKS; 
 
 ALTER TASK events_task RESUME;
+
+// -- delete dublicates in tables
+create or replace temporary table duplicate_json_events as (
+SELECT * FROM json_events_data 
+  qualify row_number() over (partition by json_events_data.v order by json_events_data.v) = 2
+);
+
+create or replace temporary table duplicate_events as (
+SELECT * FROM events 
+  qualify row_number() over (partition by events.player_id order by events.player_id) = 2
+);
+    
+begin transaction;
+
+delete from json_events_data jed
+using duplicate_json_events dje
+where jed.$1=dje.$1;
+
+insert into json_events_data
+select * 
+from duplicate_json_events;
+
+delete from events a
+using duplicate_events b
+where (a.$1,a.$2,a.$3)=(b.$1,b.$2,b.$3);
+
+insert into events
+select * 
+from duplicate_events;
+
+commit;
